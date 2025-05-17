@@ -2,6 +2,7 @@ import { buildCommand } from "@stricli/core";
 import type { LocalContext } from "../context";
 import { Anthropic } from "@anthropic-ai/sdk";
 import { ENV } from "../env";
+import chalk from "chalk";
 
 export const RunCommand = buildCommand({
   parameters: {
@@ -46,10 +47,12 @@ export const RunCommand = buildCommand({
 
       history.push({ role: "user", content: prompt });
 
+      const thinkingTimer = setTimeout(() => {
+        console.log(chalk.gray("(Thinking...)"));
+      }, 3000);
+
       try {
         let response: string;
-
-        console.log("Waiting for response...");
         const result = await anthropic.messages.create({
           model: modelName,
           max_tokens: 1000,
@@ -57,6 +60,7 @@ export const RunCommand = buildCommand({
           system:
             "You are Dairinin, a helpful AI assistant. You can send briefs of what the user has on their plate by reading their email, calendar, and other sources. You can perform these tasks on a schedule or on demand. Introduce yourself as Dairinin, not as Claude.",
         });
+        clearTimeout(thinkingTimer);
 
         if (result.content[0] && "text" in result.content[0]) {
           response = result.content[0].text;
@@ -69,11 +73,11 @@ export const RunCommand = buildCommand({
         }
 
         console.log(`\nAI: ${response}\n`);
-
-        // Add AI response to history
         history.push({ role: "assistant", content: response });
       } catch (error) {
         console.error("Error getting AI response:", error);
+      } finally {
+        clearTimeout(thinkingTimer);
       }
     }
   },
