@@ -2,6 +2,8 @@ import { buildCommand } from "@stricli/core";
 import type { LocalContext } from "../context";
 import { Anthropic } from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
+import invariant from "tiny-invariant";
+dotenv.config();
 
 export const RunCommand = buildCommand({
   parameters: {
@@ -14,12 +16,13 @@ export const RunCommand = buildCommand({
   async func(flags: Record<string, any>, ...args) {
     const context = this as unknown as LocalContext;
 
-    // Load environment variables from .env file
-    dotenv.config();
+    invariant(
+      process.env.ANTHROPIC_API_KEY,
+      "ANTHROPIC_API_KEY environment variable must be set"
+    );
 
-    // Initialize Claude client
     const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY || "", // Use API key from .env file
+      apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
     const modelName = "claude-3-7-sonnet-20250219";
@@ -31,18 +34,11 @@ export const RunCommand = buildCommand({
       `🤖 Dairinin AI Assistant started using ${modelName}. Type 'exit' to quit.`
     );
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.log(
-        "⚠️ Warning: ANTHROPIC_API_KEY environment variable not set."
-      );
-      console.log(
-        "The assistant will echo your messages instead of using Claude."
-      );
-    }
+    console.log(
+      "\nDairinin: Hello! I'm Dairinin, your AI assistant. I can send briefs of what you have on your plate by reading your email, calendar, and other sources. I can do this on a schedule or on demand. How can I help you today?\n"
+    );
 
-    // Simple agentic loop
     while (true) {
-      // Get user input from command line
       const prompt = await getUserInput(context);
 
       if (prompt.toLowerCase() === "exit") {
@@ -50,37 +46,33 @@ export const RunCommand = buildCommand({
         break;
       }
 
-      // Skip empty messages and reserved words
       if (!prompt.trim() || prompt.toLowerCase() === "thinking...") {
         console.log("Please enter a valid message");
         continue;
       }
-      
-      // Add user message to history
+
       history.push({ role: "user", content: prompt });
 
       try {
         let response: string;
 
-        if (process.env.ANTHROPIC_API_KEY) {
-          // Send request to Claude API
-          console.log("Waiting for response...");
-          const result = await anthropic.messages.create({
-            model: modelName,
-            max_tokens: 1000,
-            messages: history,
-          });
+        console.log("Waiting for response...");
+        const result = await anthropic.messages.create({
+          model: modelName,
+          max_tokens: 1000,
+          messages: history,
+          system:
+            "You are Dairinin, a helpful AI assistant. You can send briefs of what the user has on their plate by reading their email, calendar, and other sources. You can perform these tasks on a schedule or on demand. Introduce yourself as Dairinin, not as Claude.",
+        });
 
-          // Handle different response types
-          if (result.content[0] && "text" in result.content[0]) {
-            response = result.content[0].text;
-          } else {
-            response = "Unable to generate text response";
-            console.error("Unexpected response format:", JSON.stringify(result.content));
-          }
+        if (result.content[0] && "text" in result.content[0]) {
+          response = result.content[0].text;
         } else {
-          // Echo mode when API key is not available
-          response = `I'm in echo mode (no API key): ${prompt}`;
+          response = "Unable to generate text response";
+          console.error(
+            "Unexpected response format:",
+            JSON.stringify(result.content)
+          );
         }
 
         console.log(`\nAI: ${response}\n`);
