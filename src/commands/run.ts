@@ -3,6 +3,8 @@ import type { LocalContext } from "../context";
 import { Anthropic } from "@anthropic-ai/sdk";
 import { ENV } from "../env";
 import chalk from "chalk";
+import { loadConfig, discoverMCPFunctions } from "../config";
+import invariant from "tiny-invariant";
 
 export const RunCommand = buildCommand({
   parameters: {
@@ -14,20 +16,42 @@ export const RunCommand = buildCommand({
   },
   async func(flags: Record<string, any>, ...args) {
     const context = this as unknown as LocalContext;
+    const config = await loadConfig();
+
+    for (const [serverName, mcpServer] of Object.entries(config.mcpServers)) {
+      try {
+        const { tools } = await discoverMCPFunctions(mcpServer);
+        invariant(
+          tools.length !== 0,
+          "invariant: this MCP server exposes no tools"
+        );
+
+        const toolDisplay = tools
+          .slice(0, 3)
+          .map((tool) => tool.name)
+          .concat("...")
+          .join(",");
+
+        console.log(
+          chalk.gray(`(🔌 MCP Server '${serverName}' [${toolDisplay}])`)
+        );
+      } catch (error) {
+        console.error(
+          `Failed to connect to MCP server '${serverName}': ${
+            mcpServer.command
+          } ${mcpServer.args.join(" ")}: ${error}`
+        );
+      }
+    }
 
     const anthropic = new Anthropic({
       apiKey: ENV.ANTHROPIC_API_KEY,
     });
 
     const modelName = "claude-3-7-sonnet-20250219";
-
-    // Initialize conversation history
     const history: Array<{ role: "user" | "assistant"; content: string }> = [];
 
-    console.log(
-      `🤖 Dairinin AI Assistant started using ${modelName}. Type 'exit' to quit.`
-    );
-
+    console.log(`🤖 Dairinin AI Assistant started. Type 'exit' to quit.`);
     console.log(
       "\nDairinin: Hello! I'm Dairinin, your AI assistant. I can send briefs of what you have on your plate by reading your email, calendar, and other sources. I can do this on a schedule or on demand. How can I help you today?\n"
     );
