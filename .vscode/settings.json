@@ -1,3 +1,7 @@
 {
-  "amp.commands.allowlist": ["bun run tsc --noEmit", "bun --version"]
+  "amp.commands.allowlist": [
+    "bun run tsc --noEmit",
+    "bun --version",
+    "bun add *"
+  ]
 }

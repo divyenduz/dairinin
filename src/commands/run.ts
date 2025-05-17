@@ -1,9 +1,7 @@
 import { buildCommand } from "@stricli/core";
 import type { LocalContext } from "../context";
 import { Anthropic } from "@anthropic-ai/sdk";
-import dotenv from "dotenv";
-import invariant from "tiny-invariant";
-dotenv.config();
+import { ENV } from "../env";
 
 export const RunCommand = buildCommand({
   parameters: {
@@ -16,13 +14,8 @@ export const RunCommand = buildCommand({
   async func(flags: Record<string, any>, ...args) {
     const context = this as unknown as LocalContext;
 
-    invariant(
-      process.env.ANTHROPIC_API_KEY,
-      "ANTHROPIC_API_KEY environment variable must be set"
-    );
-
     const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
+      apiKey: ENV.ANTHROPIC_API_KEY,
     });
 
     const modelName = "claude-3-7-sonnet-20250219";
@@ -86,7 +79,6 @@ export const RunCommand = buildCommand({
   },
 });
 
-// Helper function to get user input
 async function getUserInput(context: LocalContext): Promise<string> {
   return new Promise((resolve) => {
     process.stdout.write("\nYou: ");
