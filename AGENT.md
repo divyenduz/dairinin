@@ -9,7 +9,8 @@
 
 ## Code Style Guidelines
 
-- **Imports**: Use named imports. Group imports by external packages first, then internal modules
+- **Defensive Programmig**: use invariant from tiny-invariant a lot to validate that each function is called with correct parameters
+- **Imports**: Use named imports. Group imports by external packages first, then internal modules. Remove all unused imports.
 - **Types**: Use TypeScript strict mode. Prefer interfaces for objects. Use explicit typing
 - **Naming**: camelCase for variables/functions, PascalCase for classes/types/interfaces
 - **Error Handling**: Use typed errors and proper error propagation
