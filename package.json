@@ -1,0 +1,16 @@
+{
+  "name": "dairinin",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "^1.2.13"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@stricli/auto-complete": "^1.1.2",
+    "@stricli/core": "^1.1.2"
+  }
+}
