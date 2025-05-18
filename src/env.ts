@@ -1,21 +1,18 @@
-import { z } from "zod";
-import dotenv from "dotenv";
+import dotenv from 'dotenv';
+import { z } from 'zod';
 
 dotenv.config();
 
 const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1, {
-    message: "ANTHROPIC_API_KEY is required",
+    message: 'ANTHROPIC_API_KEY is required',
   }),
 });
 
 const env = envSchema.safeParse(process.env);
 
 if (!env.success) {
-  console.error(
-    "❌ Invalid environment variables:",
-    env.error.flatten().fieldErrors
-  );
+  console.error('❌ Invalid environment variables:', env.error.flatten().fieldErrors);
   process.exit(1);
 }
 
