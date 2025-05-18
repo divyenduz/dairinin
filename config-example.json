@@ -2,7 +2,17 @@
   "mcpServers": {
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest"]
+      "args": ["-y", "@playwright/mcp@latest", "--headless"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/divyendusingh/Desktop",
+        "/Users/divyendusingh/Downloads",
+        "/Users/divyendusingh/Documents"
+      ]
     }
   }
 }

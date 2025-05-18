@@ -115,7 +115,7 @@ export const RunCommand = buildCommand({
       try {
         const result = await anthropic.messages.create({
           model: MODEL_NAME,
-          max_tokens: 1000,
+          max_tokens: 10000,
           messages: history,
           tools: allTools.concat([
             {
@@ -127,10 +127,12 @@ export const RunCommand = buildCommand({
           system: SYSTEM_PROMPT,
         });
 
-        const textMessages: string[] = [];
+        if (verbose) {
+          console.log(`Internal model result: ${JSON.stringify(result, null, 2)}`);
+        }
 
         for (const content of result.content) {
-          match(content)
+          await match(content)
             .with({ type: 'thinking' }, (content) => {
               if (verbose) {
                 console.error(chalk.gray(`Internal thought: ${JSON.stringify(content, null, 2)}`));
@@ -139,13 +141,13 @@ export const RunCommand = buildCommand({
             })
             .with({ type: 'text' }, (content) => {
               const response = content.text.trim();
-              textMessages.push(response);
+              console.log(`\nDairinin: ${response}\n`);
               history.push({ role: 'assistant', content: response });
             })
             .with({ type: 'tool_use' }, async (content) => {
               const response = await processToolUse(anthropic, content, allTools, history, flags);
               invariant(response, 'invariant: tool failed to produce a response');
-              textMessages.push(response);
+              console.log(`\nDairinin: ${response}\n`);
               history.push({ role: 'assistant', content: response });
             })
             .otherwise((content) => {
@@ -153,10 +155,6 @@ export const RunCommand = buildCommand({
                 console.error(chalk.gray(`Internal thought: ${content.type}`));
               }
             });
-        }
-
-        if (textMessages.length > 0) {
-          console.log(`\nDairinin: ${textMessages.join(' ')}\n`);
         }
       } catch (error) {
         console.error('Error getting AI response:', error);
@@ -190,6 +188,10 @@ async function processToolUse(
     content.input as Record<string, any>,
   );
 
+  if (verbose) {
+    console.log(`toolResult: ${JSON.stringify(toolResult, null, 2)}`);
+  }
+
   history.push({
     role: 'assistant',
     content: `I will use the tool ${content.name} with id ${
@@ -210,13 +212,19 @@ async function processToolUse(
 
   const toolResultResponse = await anthropic.messages.create({
     model: MODEL_NAME,
-    max_tokens: 1000,
+    max_tokens: 10000,
     messages: history,
     system: SYSTEM_PROMPT,
   });
 
-  toolResultResponse.content.length === 1,
-    `invariant: response length of 1 text expected, found ${toolResultResponse.content.length}`;
+  if (verbose) {
+    console.log(`Internal model result: ${JSON.stringify(toolResultResponse, null, 2)}`);
+  }
+
+  invariant(
+    toolResultResponse.content.length === 1,
+    `invariant: response length of 1 text expected, found ${toolResultResponse.content.length}`,
+  );
   if (toolResultResponse.content[0] && 'text' in toolResultResponse.content[0]) {
     const response = toolResultResponse.content[0].text;
     return response.trim();
