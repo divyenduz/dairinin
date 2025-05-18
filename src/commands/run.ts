@@ -127,6 +127,8 @@ export const RunCommand = buildCommand({
           system: SYSTEM_PROMPT,
         });
 
+        const textMessages: string[] = [];
+
         for (const content of result.content) {
           match(content)
             .with({ type: 'thinking' }, (content) => {
@@ -137,13 +139,13 @@ export const RunCommand = buildCommand({
             })
             .with({ type: 'text' }, (content) => {
               const response = content.text.trim();
-              console.log(`\nDairinin: ${response}\n`);
+              textMessages.push(response);
               history.push({ role: 'assistant', content: response });
             })
             .with({ type: 'tool_use' }, async (content) => {
               const response = await processToolUse(anthropic, content, allTools, history, flags);
               invariant(response, 'invariant: tool failed to produce a response');
-              console.log(`\nDairinin: ${response}\n`);
+              textMessages.push(response);
               history.push({ role: 'assistant', content: response });
             })
             .otherwise((content) => {
@@ -151,6 +153,10 @@ export const RunCommand = buildCommand({
                 console.error(chalk.gray(`Internal thought: ${content.type}`));
               }
             });
+        }
+
+        if (textMessages.length > 0) {
+          console.log(`\nDairinin: ${textMessages.join(' ')}\n`);
         }
       } catch (error) {
         console.error('Error getting AI response:', error);
@@ -179,8 +185,10 @@ async function processToolUse(
   );
   invariant(toolToUse.executeTool, `invariant: expected ${content.name} to have executeTool`);
 
-  // @ts-expect-error fix types of content.input
-  const toolResult = await toolToUse.executeTool(content.name, content.input);
+  const toolResult = await toolToUse.executeTool(
+    content.name,
+    content.input as Record<string, any>,
+  );
 
   history.push({
     role: 'assistant',
