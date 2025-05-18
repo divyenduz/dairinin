@@ -48,7 +48,15 @@ export async function discoverMCPFunctions(mcpServer: MCPServer) {
 
   const { tools } = await client.listTools();
 
+  const executeTool = async (
+    toolName: string,
+    parameters: Record<string, any>
+  ) => {
+    return await client.callTool({ name: toolName, arguments: parameters });
+  };
+
   return {
     tools,
+    executeTool,
   };
 }

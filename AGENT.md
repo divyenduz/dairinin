@@ -23,3 +23,4 @@
 
 - Run tests with: `bun test`
 - Single test file: `bun test path/to/test.ts`
+- If you want to check the terminal and programmatically test the interactive CLI, you can open http://localhost:5173/?cwd=/Users/divyendusingh/Documents/zoid/playground/dairinin and run `bun run src/bin/cli.ts` there. Use screenshots to track your progress.
