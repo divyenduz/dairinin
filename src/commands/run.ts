@@ -1,111 +1,237 @@
-import { buildCommand } from "@stricli/core";
-import type { LocalContext } from "../context";
-import { Anthropic } from "@anthropic-ai/sdk";
-import { ENV } from "../env";
-import chalk from "chalk";
+import { Anthropic } from '@anthropic-ai/sdk';
+import { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources';
+
+import { buildCommand } from '@stricli/core';
+
+import chalk from 'chalk';
+import dedent from 'dedent';
+import invariant from 'tiny-invariant';
+import { match } from 'ts-pattern';
+
+import { discoverMCPFunctions, loadConfig } from '@src/config';
+import type { LocalContext } from '@src/context';
+import { ENV } from '@src/env';
+import { getUserInput } from '@src/utils';
+
+type Flags = {
+  verbose: boolean;
+};
+
+// https://modelcontextprotocol.io/quickstart/client#node
+const MODEL_NAME = 'claude-3-7-sonnet-20250219';
+
+const SYSTEM_PROMPT = dedent(`
+  You are Dairinin, a helpful AI assistant. 
+  You can send briefs of what the user has on their plate by reading their email, calendar, and other sources. 
+  
+  You can perform these tasks on a schedule or on demand. 
+  When users ask for web information like weather. 
+  Introduce yourself as Dairinin, not as Claude.`);
+
+type AnthropicTool = (Anthropic.Messages.Tool | WebSearchTool20250305) & {
+  executeTool?: Awaited<ReturnType<typeof discoverMCPFunctions>>['executeTool'];
+};
+type AnthropicToolArray = AnthropicTool[];
 
 export const RunCommand = buildCommand({
   parameters: {
-    flags: {},
+    flags: {
+      verbose: {
+        kind: 'boolean',
+        brief: 'Enable verbose mode',
+        default: false,
+      },
+    },
     aliases: {},
   },
   docs: {
-    brief: "Run an interactive AI agent session",
+    brief: 'Run an interactive AI agent session',
   },
-  async func(flags: Record<string, any>, ...args) {
+  async func(flags: Flags, ...args) {
+    const { verbose } = flags;
     const context = this as unknown as LocalContext;
+    const config = await loadConfig();
+    const allTools: AnthropicToolArray = [];
+
+    for (const [serverName, mcpServer] of Object.entries(config.mcpServers)) {
+      try {
+        const { tools, executeTool } = await discoverMCPFunctions(mcpServer);
+        invariant(tools.length !== 0, 'invariant: this MCP server exposes no tools');
+
+        for (const tool of tools) {
+          allTools.push({
+            name: tool.name,
+            description: tool.description,
+            input_schema: tool.inputSchema,
+            executeTool,
+          });
+        }
+
+        const toolDisplay = tools
+          .slice(0, 3)
+          .map((tool) => tool.name)
+          .concat('...')
+          .join(',');
+
+        console.log(chalk.gray(`(🔌 MCP Server '${serverName}' [${toolDisplay}])`));
+      } catch (error) {
+        console.error(
+          `Failed to connect to MCP server '${serverName}': ${
+            mcpServer.command
+          } ${mcpServer.args.join(' ')}: ${error}`,
+        );
+      }
+    }
 
     const anthropic = new Anthropic({
       apiKey: ENV.ANTHROPIC_API_KEY,
     });
 
-    const modelName = "claude-3-7-sonnet-20250219";
+    const history: Array<{
+      role: 'user' | 'assistant';
+      content: string;
+    }> = [];
 
-    // Initialize conversation history
-    const history: Array<{ role: "user" | "assistant"; content: string }> = [];
-
+    console.log("🤖 Dairinin AI Assistant started. Type 'exit' to quit.");
     console.log(
-      `🤖 Dairinin AI Assistant started using ${modelName}. Type 'exit' to quit.`
-    );
-
-    console.log(
-      "\nDairinin: Hello! I'm Dairinin, your AI assistant. I can send briefs of what you have on your plate by reading your email, calendar, and other sources. I can do this on a schedule or on demand. How can I help you today?\n"
+      "\nDairinin: Hello! I'm Dairinin, your AI assistant. I can send briefs of what you have on your plate by reading your email, calendar, and other sources. I can do this on a schedule or on demand. How can I help you today?\n",
     );
 
     while (true) {
       const prompt = await getUserInput(context);
 
-      if (prompt.toLowerCase() === "exit") {
-        console.log("Goodbye! 👋");
+      if (prompt.toLowerCase() === 'exit') {
+        console.log('Goodbye! 👋');
         break;
       }
 
-      if (!prompt.trim() || prompt.toLowerCase() === "thinking...") {
-        console.log("Please enter a valid message");
+      if (!prompt.trim()) {
+        console.log('Please enter a valid message');
         continue;
       }
 
-      history.push({ role: "user", content: prompt });
-
-      const thinkingTimer = setTimeout(() => {
-        console.log(chalk.gray("(Thinking...)"));
-      }, 3000);
+      history.push({ role: 'user', content: prompt });
 
       try {
-        let response: string;
         const result = await anthropic.messages.create({
-          model: modelName,
-          max_tokens: 1000,
+          model: MODEL_NAME,
+          max_tokens: 10000,
           messages: history,
-          system:
-            "You are Dairinin, a helpful AI assistant. You can send briefs of what the user has on their plate by reading their email, calendar, and other sources. You can perform these tasks on a schedule or on demand. Introduce yourself as Dairinin, not as Claude.",
+          tools: allTools.concat([
+            {
+              type: 'web_search_20250305',
+              name: 'web_search',
+              max_uses: 5,
+            },
+          ]),
+          system: SYSTEM_PROMPT,
         });
-        clearTimeout(thinkingTimer);
 
-        if (result.content[0] && "text" in result.content[0]) {
-          response = result.content[0].text;
-        } else {
-          response = "Unable to generate text response";
-          console.error(
-            "Unexpected response format:",
-            JSON.stringify(result.content)
-          );
+        if (verbose) {
+          console.log(`Internal model result: ${JSON.stringify(result, null, 2)}`);
         }
 
-        console.log(`\nAI: ${response}\n`);
-        history.push({ role: "assistant", content: response });
+        for (const content of result.content) {
+          await match(content)
+            .with({ type: 'thinking' }, (content) => {
+              if (verbose) {
+                console.error(chalk.gray(`Internal thought: ${JSON.stringify(content, null, 2)}`));
+              }
+              console.log(chalk.gray('(thinking...)'));
+            })
+            .with({ type: 'text' }, (content) => {
+              const response = content.text.trim();
+              console.log(`\nDairinin: ${response}\n`);
+              history.push({ role: 'assistant', content: response });
+            })
+            .with({ type: 'tool_use' }, async (content) => {
+              const response = await processToolUse(anthropic, content, allTools, history, flags);
+              invariant(response, 'invariant: tool failed to produce a response');
+              console.log(`\nDairinin: ${response}\n`);
+              history.push({ role: 'assistant', content: response });
+            })
+            .otherwise((content) => {
+              if (verbose) {
+                console.error(chalk.gray(`Internal thought: ${content.type}`));
+              }
+            });
+        }
       } catch (error) {
-        console.error("Error getting AI response:", error);
-      } finally {
-        clearTimeout(thinkingTimer);
+        console.error('Error getting AI response:', error);
       }
     }
   },
 });
 
-async function getUserInput(context: LocalContext): Promise<string> {
-  return new Promise((resolve) => {
-    process.stdout.write("\nYou: ");
+async function processToolUse(
+  anthropic: Anthropic,
+  content: Anthropic.Messages.ToolUseBlock,
+  allTools: AnthropicToolArray,
+  history: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>,
+  { verbose }: Flags,
+) {
+  if (verbose) {
+    console.log(chalk.gray(`\nDairinin: [Using tool: ${content.name}]\n`));
+  }
+  const toolToUse = allTools.find((tool) => tool.name === content.name);
+  invariant(
+    toolToUse,
+    `invariant: couldn't find a tool to use, expected ${content.name} found none`,
+  );
+  invariant(toolToUse.executeTool, `invariant: expected ${content.name} to have executeTool`);
 
-    const chunks: string[] = [];
+  const toolResult = await toolToUse.executeTool(
+    content.name,
+    content.input as Record<string, any>,
+  );
 
-    process.stdin.resume();
-    process.stdin.setEncoding("utf8");
+  if (verbose) {
+    console.log(`toolResult: ${JSON.stringify(toolResult, null, 2)}`);
+  }
 
-    const onData = (chunk: string) => {
-      if (chunk.includes("\n")) {
-        const input = [...chunks, chunk].join("").trim();
-        chunks.length = 0;
-
-        process.stdin.removeListener("data", onData);
-        process.stdin.pause();
-
-        resolve(input);
-      } else {
-        chunks.push(chunk);
-      }
-    };
-
-    process.stdin.on("data", onData);
+  history.push({
+    role: 'assistant',
+    content: `I will use the tool ${content.name} with id ${
+      content.id
+    } and following input parameters ${JSON.stringify(content.input, null, 2)}`,
   });
+
+  history.push({
+    role: 'user',
+    content: `The tool call with id ${
+      content.id
+    } responded with the following result ${JSON.stringify(
+      toolResult || { error: 'Tool execution failed' },
+      null,
+      2,
+    )}`,
+  });
+
+  const toolResultResponse = await anthropic.messages.create({
+    model: MODEL_NAME,
+    max_tokens: 10000,
+    messages: history,
+    system: SYSTEM_PROMPT,
+  });
+
+  if (verbose) {
+    console.log(`Internal model result: ${JSON.stringify(toolResultResponse, null, 2)}`);
+  }
+
+  invariant(
+    toolResultResponse.content.length === 1,
+    `invariant: response length of 1 text expected, found ${toolResultResponse.content.length}`,
+  );
+  if (toolResultResponse.content[0] && 'text' in toolResultResponse.content[0]) {
+    const response = toolResultResponse.content[0].text;
+    return response.trim();
+  } else {
+    console.error(
+      'Unexpected response format after tool call:',
+      JSON.stringify(toolResultResponse.content),
+    );
+  }
 }
