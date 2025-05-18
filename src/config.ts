@@ -1,7 +1,6 @@
 import { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 

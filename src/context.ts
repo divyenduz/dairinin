@@ -1,5 +1,3 @@
-// Copyright 2024 Bloomberg Finance L.P.
-// Distributed under the terms of the Apache 2.0 license.
 import type { StricliAutoCompleteContext } from '@stricli/auto-complete';
 import type { CommandContext } from '@stricli/core';
 
